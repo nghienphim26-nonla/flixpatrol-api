@@ -21,8 +21,19 @@ def home():
 @app.get("/scrape")
 def scrape_flixpatrol():
     target_url = "https://flixpatrol.com/top10/netflix/vietnam/"
+    
+    # Bổ sung Headers đầy đủ như một người dùng thật đang duyệt web
+    headers = {
+        "User-Agent": "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/124.0.0.0 Safari/537.36",
+        "Accept": "text/html,application/xhtml+xml,application/xml;q=0.9,image/avif,image/webp,image/apng,*/*;q=0.8",
+        "Accept-Language": "en-US,en;q=0.9,vi;q=0.8",
+        "Referer": "https://flixpatrol.com/",
+        "Connection": "keep-alive"
+    }
+
     try:
-        response = requests.get(target_url, impersonate="chrome", timeout=30)
+        # Sử dụng curl_cffi với impersonate="chrome" kèm theo headers phụ trợ
+        response = requests.get(target_url, headers=headers, impersonate="chrome", timeout=30)
         
         if response.status_code != 200:
             raise HTTPException(status_code=502, detail=f"Lỗi kết nối trang đích, mã lỗi: {response.status_code}")
@@ -33,14 +44,13 @@ def scrape_flixpatrol():
         flat_results = []
         current_index = 1
         current_timestamp = int(time.time() * 1000)
-        timestamp_str = "Mon, 15 Jun 2026 20:36:56 GMT" # Hoặc lấy thời gian thực nếu muốn
+        timestamp_str = "Mon, 15 Jun 2026 20:36:56 GMT"
         
         for card in cards:
             title_elem = card.select_first('h3')
             if not title_elem:
                 continue
             
-            table_title = title_elem.get_text(strip=True)
             rows = card.select('tbody.tabular-nums tr')
             
             for row in rows:
@@ -67,7 +77,6 @@ def scrape_flixpatrol():
                     flat_results.append(item)
                     current_index += 1
 
-        # Trả về trực tiếp định dạng mảng JSON giống yêu cầu
         return flat_results
 
     except Exception as e:
