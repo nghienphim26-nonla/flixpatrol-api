@@ -13,32 +13,52 @@ async def scrape_flixpatrol():
     target_url = "https://flixpatrol.com/top10/netflix/vietnam/"
     
     async with async_playwright() as p:
-        # Khởi động trình duyệt Chromium ở chế độ không giao diện (headless)
+        # Cấu hình trình duyệt với các tham số ẩn danh chống Cloudflare
         browser = await p.chromium.launch(
             headless=True,
-            args=["--disable-blink-features=AutomationControlled"]
+            args=[
+                "--disable-blink-features=AutomationControlled",
+                "--no-sandbox",
+                "--disable-setuid-sandbox",
+                "--disable-infobars",
+                "--window-position=0,0",
+                "--ignore-certificate-errors",
+                "--user-agent=Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/124.0.0.0 Safari/537.36"
+            ]
         )
+        
         context = await browser.new_context(
             user_agent="Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/124.0.0.0 Safari/537.36",
-            viewport={"width": 1920, "height": 1080}
+            viewport={"width": 1920, "height": 1080},
+            locale="en-US"
         )
+        
+        # Đè thuộc tính navigator.webdriver để qua mặt Cloudflare
+        await context.add_init_script("""
+            Object.defineProperty(navigator, 'webdriver', {
+                get: () => undefined
+            });
+        """)
+        
         page = await context.new_page()
+        flat_results = []
         
         try:
-            # Truy cập trang web và chờ đợi load xong
-            await page.goto(target_url, timeout=60000, wait_until="domcontentloaded")
+            print("Đang tải trang FlixPatrol...")
+            await page.goto(target_url, timeout=60000, wait_until="networkidle")
             
-            # Đợi thêm chút thời gian nếu Cloudflare có trang kiểm tra (checking your browser)
-            await page.wait_for_timeout(5000)
-            
-            # Lấy toàn bộ nội dung HTML sau khi đã vượt qua check
+            # Đợi cho đến khi phần tử nội dung div.card xuất hiện
+            try:
+                await page.wait_for_selector('div.card', timeout=30000)
+            except Exception:
+                print("Cảnh báo: Không thể tìm thấy thẻ div.card trong thời gian chờ.")
+
             html_content = await page.content()
             
             from bs4 import BeautifulSoup
             soup = BeautifulSoup(html_content, 'html.parser')
             cards = soup.select('div.card')
             
-            flat_results = []
             current_index = 1
             current_timestamp = int(time.time() * 1000)
             timestamp_str = "Mon, 15 Jun 2026 20:36:56 GMT"
@@ -73,16 +93,17 @@ async def scrape_flixpatrol():
                         flat_results.append(item)
                         current_index += 1
 
-            if len(flat_results) > 0:
-                with open("flixpatrol_netflix_vn.json", "w", encoding="utf-8") as f:
-                    json.dump(flat_results, f, ensure_ascii=False, indent=2)
-                print("Cào dữ liệu thành công với Playwright!")
-            else:
-                print("Không tìm thấy dữ liệu bảng trên trang.")
+            print(f"Tổng số bộ phim cào được: {len(flat_results)}")
 
         except Exception as e:
             print(f"Lỗi trong quá trình chạy Playwright: {e}")
+            
         finally:
+            # Luôn khởi tạo/ghi file JSON để tránh lỗi Git step không tìm thấy file
+            with open("flixpatrol_netflix_vn.json", "w", encoding="utf-8") as f:
+                json.dump(flat_results, f, ensure_ascii=False, indent=2)
+            print("Đã ghi thành công file flixpatrol_netflix_vn.json")
+            
             await browser.close()
 
 if __name__ == "__main__":
