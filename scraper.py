@@ -13,7 +13,6 @@ async def scrape_flixpatrol():
     target_url = "https://flixpatrol.com/top10/netflix/vietnam/"
     
     async with async_playwright() as p:
-        # Cấu hình trình duyệt với các tham số ẩn danh chống Cloudflare
         browser = await p.chromium.launch(
             headless=True,
             args=[
@@ -21,7 +20,6 @@ async def scrape_flixpatrol():
                 "--no-sandbox",
                 "--disable-setuid-sandbox",
                 "--disable-infobars",
-                "--window-position=0,0",
                 "--ignore-certificate-errors",
                 "--user-agent=Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/124.0.0.0 Safari/537.36"
             ]
@@ -33,7 +31,7 @@ async def scrape_flixpatrol():
             locale="en-US"
         )
         
-        # Đè thuộc tính navigator.webdriver để qua mặt Cloudflare
+        # Ẩn dấu vết tự động hóa
         await context.add_init_script("""
             Object.defineProperty(navigator, 'webdriver', {
                 get: () => undefined
@@ -44,15 +42,15 @@ async def scrape_flixpatrol():
         flat_results = []
         
         try:
-            print("Đang tải trang FlixPatrol...")
-            await page.goto(target_url, timeout=60000, wait_until="networkidle")
+            print("Đang truy cập trang FlixPatrol...")
+            # Dùng domcontentloaded thay vì networkidle để không bị timeout
+            await page.goto(target_url, timeout=45000, wait_until="domcontentloaded")
             
-            # Đợi cho đến khi phần tử nội dung div.card xuất hiện
-            try:
-                await page.wait_for_selector('div.card', timeout=30000)
-            except Exception:
-                print("Cảnh báo: Không thể tìm thấy thẻ div.card trong thời gian chờ.")
-
+            # Chờ thêm 5 giây để Cloudflare nhả trang và render nội dung bảng
+            print("Đang chờ hiển thị dữ liệu...")
+            await page.wait_for_timeout(5000)
+            
+            # Thử tìm thẻ chứa dữ liệu bảng phim
             html_content = await page.content()
             
             from bs4 import BeautifulSoup
@@ -93,16 +91,16 @@ async def scrape_flixpatrol():
                         flat_results.append(item)
                         current_index += 1
 
-            print(f"Tổng số bộ phim cào được: {len(flat_results)}")
+            print(f"Cào thành công tổng cộng: {len(flat_results)} bộ phim.")
 
         except Exception as e:
-            print(f"Lỗi trong quá trình chạy Playwright: {e}")
+            print(f"Lỗi trong quá trình cào dữ liệu: {e}")
             
         finally:
-            # Luôn khởi tạo/ghi file JSON để tránh lỗi Git step không tìm thấy file
+            # Ghi đè vào file JSON với dữ liệu đã cào được
             with open("flixpatrol_netflix_vn.json", "w", encoding="utf-8") as f:
                 json.dump(flat_results, f, ensure_ascii=False, indent=2)
-            print("Đã ghi thành công file flixpatrol_netflix_vn.json")
+            print("Đã cập nhật file flixpatrol_netflix_vn.json")
             
             await browser.close()
 
